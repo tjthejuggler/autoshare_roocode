@@ -351,10 +351,18 @@ def _process_source(filepath: str, fmt: str, project: str | None) -> bool:
 
 
 def watch_source(source: dict) -> None:
-    """Watch a single source file for changes and process items when changed."""
+    """Watch a single source file for changes and process items when changed.
+
+    Watches the parent *directory* rather than the file itself so that
+    atomic rename-based writes (e.g. from Android apps that write to a temp
+    file then rename it into place) are detected correctly.  inotifywait
+    watching a file by inode misses rename events entirely.
+    """
     filepath = os.path.abspath(os.path.expanduser(source["path"]))
     fmt = source["format"]
     project = source.get("project")
+    watch_dir = str(Path(filepath).parent)
+    filename = Path(filepath).name
 
     if not os.path.exists(filepath):
         logger.info("Creating watch file: %s", filepath)
@@ -370,10 +378,15 @@ def watch_source(source: dict) -> None:
     # Process any existing items first
     _process_source(filepath, fmt, project)
 
-    # Start inotifywait in monitor mode
+    # Watch the parent directory for modify, create, and moved_to events.
+    # moved_to fires when a file is renamed/moved into the directory (atomic writes).
     cmd = [
-        "inotifywait", "-m", "-e", "modify", "-e", "create",
-        "--format", "%e", filepath,
+        "inotifywait", "-m",
+        "-e", "modify",
+        "-e", "create",
+        "-e", "moved_to",
+        "--format", "%e %f",
+        watch_dir,
     ]
 
     last_process_time = 0.0
@@ -383,14 +396,25 @@ def watch_source(source: dict) -> None:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             )
-            logger.info("inotifywait started for %s (pid %d)", filepath, proc.pid)
+            logger.info("inotifywait started on dir %s watching %s (pid %d)",
+                        watch_dir, filename, proc.pid)
 
             for line in proc.stdout:
                 line = line.strip()
                 if not line:
                     continue
 
-                logger.debug("File change event on %s: %s", filepath, line)
+                # Format is "<EVENT> <filename>"
+                parts = line.split(None, 1)
+                if len(parts) < 2:
+                    continue
+                event, changed_file = parts[0], parts[1]
+
+                # Only react to events on our specific file
+                if changed_file != filename:
+                    continue
+
+                logger.debug("File change event on %s: %s", filepath, event)
 
                 # Debounce: don't process more than once per DEBOUNCE_SECONDS
                 now = time.time()
