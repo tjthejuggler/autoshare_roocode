@@ -26,6 +26,37 @@ import vscode_ctrl
 
 logger = logging.getLogger("autoshare")
 
+# Global lock and timestamp to serialize submissions across threads.
+# Only one project submits at a time, and there's a configurable delay
+# between submissions so Roo Code has time to fully process each task.
+_submit_lock = threading.Lock()
+_last_submit_time = 0.0
+
+
+def _send_task_serialized(project_name: str, task_text: str) -> bool:
+    """Send a task to Roo Code, serialized across all watch threads.
+
+    Acquires a global lock so only one submission runs at a time, then
+    enforces a minimum delay (config.INTER_SUBMIT_DELAY) since the last
+    submission.  This prevents multiple projects from fighting over window
+    focus when the computer starts up with pending items in several files.
+    """
+    global _last_submit_time
+
+    with _submit_lock:
+        # Wait until enough time has passed since the last submission
+        elapsed = time.time() - _last_submit_time
+        if elapsed < config.INTER_SUBMIT_DELAY:
+            wait = config.INTER_SUBMIT_DELAY - elapsed
+            logger.info("Waiting %.0fs before submitting to '%s' "
+                        "(last submit was %.0fs ago)",
+                        wait, project_name, elapsed)
+            time.sleep(wait)
+
+        success = vscode_ctrl.send_task_to_roo_code(project_name, task_text)
+        _last_submit_time = time.time()
+        return success
+
 
 def is_screen_unlocked() -> bool:
     """Check if the screen is unlocked using loginctl or DBus screensaver."""
@@ -227,7 +258,7 @@ def process_markdown_file(filepath: str) -> bool:
 
     logger.info("Processing task for project '%s': %s", project_name, task_text[:80])
 
-    success = vscode_ctrl.send_task_to_roo_code(project_name, task_text)
+    success = _send_task_serialized(project_name, task_text)
 
     if config.REMOVE_AFTER_PROCESS:
         remove_first_item(filepath)
@@ -314,7 +345,7 @@ def process_json_file(filepath: str, project_name: str) -> bool:
         logger.info("Processing JSON note %s for project '%s': %s",
                      note_id, project_name, task_text[:80])
 
-        success = vscode_ctrl.send_task_to_roo_code(project_name, task_text)
+        success = _send_task_serialized(project_name, task_text)
 
         if success:
             completed_path = _sibling_filepath(filepath, "_completed")

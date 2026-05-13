@@ -140,6 +140,7 @@ python autoshare.py -v
 Edit [`config.py`](config.py) to adjust:
 - `WATCH_SOURCES` — list of files to watch with format and project name
 - `REMOVE_AFTER_PROCESS` — whether to remove items after processing (default: `True`)
+- `INTER_SUBMIT_DELAY` — seconds between submissions to different projects (default: `60`). Prevents multiple projects from fighting over window focus at startup.
 - Timing delays for window activation, command palette, pasting, etc.
 
 ## How It Finds the Right VSCode Window
@@ -180,6 +181,7 @@ config.py           — Configuration constants (WATCH_SOURCES list, timing, etc
 
 ## Changelog
 
+- **2026-05-13 05:41** — Fix: serialized submissions across all watch threads. When multiple projects have pending items at startup (e.g. after reboot), they now submit one at a time with a 60-second gap between each, preventing window-focus conflicts that caused all but one to fail. Controlled by `INTER_SUBMIT_DELAY` in config.py.
 - **2026-04-25 09:25** — Fix: JSON `_completed`/`_undone` files now use the same `{"notes": [...]}` format as the original JSON, so notes can be copy-pasted back to retry. Each note gets a `_processed` timestamp. Previously these were plain text, making it impossible to easily re-queue items.
 - **2026-04-24 20:55** — Multi-source architecture: `WATCH_SOURCES` list in config.py replaces single `DEFAULT_WATCH_FILE`. Added JSON format support for debug note files (e.g. Wags). Each source runs in its own thread. Easy to add new sources by copying an entry in the list.
 - **2026-04-15 16:37** — Fix: all xdotool keystrokes now sent directly to the target window by ID (`xdotool key --window <id>` / `xdotool type --window <id>`), so commands go to the correct VSCode window even when multiple windows are open. Also added `xdotool windowfocus --sync` after `wmctrl` activation for reliable focus.

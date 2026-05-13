@@ -33,6 +33,7 @@ DELAY_AFTER_TYPE = 0.3           # After typing in command palette
 DELAY_AFTER_NEWTASK = 2.0        # After executing New Task command
 DELAY_AFTER_PASTE = 0.5          # After pasting text
 DEBOUNCE_SECONDS = 2.0           # Debounce file change events
+INTER_SUBMIT_DELAY = 60.0        # Seconds between submissions to different projects
 
 # Logging
 LOG_LEVEL = "INFO"
