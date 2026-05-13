@@ -43,7 +43,38 @@ WATCH_SOURCES = [
 ]
 ```
 
-To add a new source, just copy an existing entry and change the values.
+### Adding a New Project (automated)
+
+Use the [`add_project.py`](add_project.py) script to add a new watch source and automatically restart the watcher:
+
+```bash
+# Add a markdown source (project name extracted from first word of items)
+python add_project.py ~/noteVault/RooCode_jobs.md
+
+# Add a JSON source (project name required)
+python add_project.py /path/to/debug_myapp.json --project myapp
+
+# Explicit format (if extension is ambiguous)
+python add_project.py /path/to/jobs.txt --format markdown
+
+# Add without restarting the watcher
+python add_project.py /path/to/debug_myapp.json --project myapp --no-restart
+
+# Skip duplicate check (e.g. after manually editing config.py)
+python add_project.py /path/to/debug_myapp.json --project myapp --force
+```
+
+The script will:
+1. Validate the input (duplicate check, required project name for JSON)
+2. Insert the new entry into `WATCH_SOURCES` in [`config.py`](config.py)
+3. Stop the running autoshare process (SIGTERM, then SIGKILL if needed)
+4. Start a fresh autoshare.py process so it picks up the new config immediately
+
+If you manually edit `config.py` (e.g. fix a path or project name), just run `add_project.py` with `--force` to restart the watcher without adding a duplicate entry.
+
+### Adding a New Project (manual)
+
+To add a new source by hand, just copy an existing entry in [`config.py`](config.py) and change the values, then restart the watcher.
 
 ## File Formats
 
@@ -177,10 +208,12 @@ Some task for a project that isn't open
 autoshare.py        — Main entry point: multi-source file watcher, markdown/JSON parsers, lock detection, orchestration
 vscode_ctrl.py      — VSCode window management and Roo Code interaction (xdotool/wmctrl)
 config.py           — Configuration constants (WATCH_SOURCES list, timing, etc.)
+add_project.py      — CLI tool to add a new watch source and restart the watcher
 ```
 
 ## Changelog
 
+- **2026-05-13 05:55** — Added `add_project.py` script: CLI tool to add a new watch source to config.py and automatically restart the watcher. Supports markdown and JSON formats, duplicate detection, and `--no-restart` flag.
 - **2026-05-13 05:41** — Fix: serialized submissions across all watch threads. When multiple projects have pending items at startup (e.g. after reboot), they now submit one at a time with a 60-second gap between each, preventing window-focus conflicts that caused all but one to fail. Controlled by `INTER_SUBMIT_DELAY` in config.py.
 - **2026-04-25 09:25** — Fix: JSON `_completed`/`_undone` files now use the same `{"notes": [...]}` format as the original JSON, so notes can be copy-pasted back to retry. Each note gets a `_processed` timestamp. Previously these were plain text, making it impossible to easily re-queue items.
 - **2026-04-24 20:55** — Multi-source architecture: `WATCH_SOURCES` list in config.py replaces single `DEFAULT_WATCH_FILE`. Added JSON format support for debug note files (e.g. Wags). Each source runs in its own thread. Easy to add new sources by copying an entry in the list.

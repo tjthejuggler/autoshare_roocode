@@ -21,6 +21,11 @@ WATCH_SOURCES = [
         "format": "json",
         "project": "tail",
     },
+    {
+        "path": "/home/twain/habitsdb/Skin_debug/debug_skin_tracker.json",
+        "format": "json",
+        "project": "skin_tracker",
+    },
 ]
 
 # Whether to remove items from the file after processing
