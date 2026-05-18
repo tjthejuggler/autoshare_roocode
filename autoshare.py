@@ -310,16 +310,18 @@ def _append_note_to_json(filepath: str, note: dict, timestamp: str) -> None:
 
 
 def process_json_file(filepath: str, project_name: str) -> bool:
-    """Read a JSON watch file, process all notes, and send each to Roo Code.
+    """Read a JSON watch file, batch all notes into one task, and send to Roo Code.
 
-    Each note in the "notes" array is formatted with full location info and
-    sent as a separate Roo Code task. After processing, the notes array is
-    cleared in the file.
+    All notes in the "notes" array are combined into a single task text and
+    sent as one Roo Code task. This avoids staggering notes from the same
+    project — the INTER_SUBMIT_DELAY is only meant between *different* projects.
+
+    After processing, the notes array is cleared in the file.
 
     Completed/undone notes are saved in the same JSON format so they can be
     easily copied back into the original file to retry.
 
-    Returns True if at least one task was processed, False if nothing to process.
+    Returns True if a task was processed, False if nothing to process.
     """
     try:
         with open(filepath, "r") as f:
@@ -336,29 +338,31 @@ def process_json_file(filepath: str, project_name: str) -> bool:
         logger.debug("No notes in JSON file: %s", filepath)
         return False
 
-    processed_any = False
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    for note in notes:
-        task_text = format_json_note(note)
+    # Batch all notes into a single task text
+    note_parts = []
+    for i, note in enumerate(notes, 1):
         note_id = note.get("id", "unknown")
-        logger.info("Processing JSON note %s for project '%s': %s",
-                     note_id, project_name, task_text[:80])
+        formatted = format_json_note(note)
+        note_parts.append(f"--- Issue {i} (id: {note_id}) ---\n{formatted}")
 
-        success = _send_task_serialized(project_name, task_text)
+    task_text = "\n\n".join(note_parts)
+    logger.info("Batching %d notes for project '%s': %s",
+                len(notes), project_name, task_text[:80])
 
-        if success:
-            completed_path = _sibling_filepath(filepath, "_completed")
+    success = _send_task_serialized(project_name, task_text)
+
+    if success:
+        completed_path = _sibling_filepath(filepath, "_completed")
+        for note in notes:
             _append_note_to_json(completed_path, note, timestamp)
-            logger.info("Note %s sent successfully", note_id)
-        else:
-            undone_path = _sibling_filepath(filepath, "_undone")
+        logger.info("Batch of %d notes sent successfully", len(notes))
+    else:
+        undone_path = _sibling_filepath(filepath, "_undone")
+        for note in notes:
             _append_note_to_json(undone_path, note, timestamp)
-            logger.warning("Note %s failed (no VSCode window for '%s')", note_id, project_name)
-
-        processed_any = True
-        # Brief pause between items to avoid overwhelming VSCode
-        time.sleep(1.0)
+        logger.warning("Batch failed (no VSCode window for '%s')", project_name)
 
     # Clear the notes array in the JSON file
     if config.REMOVE_AFTER_PROCESS:
@@ -367,7 +371,7 @@ def process_json_file(filepath: str, project_name: str) -> bool:
             json.dump(data, f, indent=2)
             f.write("\n")
 
-    return processed_any
+    return True
 
 
 # ---------------------------------------------------------------------------

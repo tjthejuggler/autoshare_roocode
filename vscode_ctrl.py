@@ -11,6 +11,7 @@ VSCode windows are open.
 """
 
 import logging
+import re
 import subprocess
 import time
 
@@ -32,10 +33,14 @@ def find_vscode_window(project_name: str) -> tuple[str, str] | None:
     VSCode window titles look like: "filename - project_name - Visual Studio Code"
     or just "project_name - Visual Studio Code".
 
+    Uses word-boundary matching so that e.g. "tail" won't falsely match
+    a window title containing "detail".
+
     Returns (window_id_hex, window_title) or None.
     """
     output = _run(["wmctrl", "-l"])
-    project_lower = project_name.lower()
+    # Word-boundary regex: matches project_name only as a whole word
+    pattern = re.compile(rf"\b{re.escape(project_name)}\b", re.IGNORECASE)
 
     for line in output.splitlines():
         # wmctrl -l format: <hex_id> <desktop> <hostname> <title>
@@ -45,8 +50,8 @@ def find_vscode_window(project_name: str) -> tuple[str, str] | None:
         win_id, _, _, title = parts
         if "Visual Studio Code" not in title:
             continue
-        # Check if project name appears in the title (case-insensitive)
-        if project_lower in title.lower():
+        # Check if project name appears as a whole word in the title
+        if pattern.search(title):
             logger.info("Found VSCode window for '%s': %s (%s)", project_name, title, win_id)
             return (win_id, title)
 

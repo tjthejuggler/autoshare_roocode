@@ -7,7 +7,7 @@ Watches files for tasks and automatically sends them to Roo Code in the correct 
 1. **Multi-Source File Watcher**: Monitors multiple files simultaneously using `inotifywait` (one thread per source)
 2. **Lock Check**: Only processes when the screen is unlocked (uses `loginctl` / DBus)
 3. **Format-Specific Parsing**: Supports markdown (project name from first word) and JSON (project name from config)
-4. **Window Matching**: Finds the VSCode window whose title contains the project name (case-insensitive) using `wmctrl`
+4. **Window Matching**: Finds the VSCode window whose title contains the project name as a whole word (case-insensitive, word-boundary regex) using `wmctrl`
 5. **Roo Code Automation**: Uses the VSCode command palette via `xdotool` to run "Roo Code: New Task", then pastes the task text and submits it
 
 ## No Image Recognition Needed!
@@ -99,7 +99,7 @@ myproject Add unit tests for the payment module
 
 ### JSON Format
 
-JSON watch files contain a `notes` array. Each note is sent as a separate Roo Code task. The project name comes from the `WATCH_SOURCES` config (not from the JSON itself). Example:
+JSON watch files contain a `notes` array. All notes from the same file are batched into a single Roo Code task (so they're not staggered with delays). The project name comes from the `WATCH_SOURCES` config (not from the JSON itself). Example:
 
 ```json
 {
@@ -126,7 +126,7 @@ Location: ui/settings/SettingsScreen.kt → SettingsScreen, SettingsViewModel
 Screen: Settings
 ```
 
-- All notes in the array are processed (not just the first one)
+- All notes in the array are batched into a single task and sent together
 - After processing, the `notes` array is cleared in the JSON file
 - Completed/undone notes are saved in the **same JSON format** (with an added `_processed` timestamp), so you can copy-paste notes back into the original file to retry:
   ```json
@@ -178,7 +178,7 @@ Edit [`config.py`](config.py) to adjust:
 
 VSCode window titles look like: `filename - project_name - Visual Studio Code`
 
-For markdown items, the project name is the first word of the item. For JSON sources, the project name comes from the `WATCH_SOURCES` config. The script matches the project name against window titles case-insensitively. So if your item starts with `MyProject`, it will match a window titled `README.md - MyProject - Visual Studio Code`.
+For markdown items, the project name is the first word of the item. For JSON sources, the project name comes from the `WATCH_SOURCES` config. The script matches the project name against window titles using a **word-boundary regex** (case-insensitive). This prevents false matches — e.g. project `tail` won't accidentally match a window titled `detail_screen.py - jugcoach - Visual Studio Code` because `tail` only matches as a whole word, not as a substring of `detail`.
 
 ## Output Files
 
@@ -213,6 +213,7 @@ add_project.py      — CLI tool to add a new watch source and restart the watch
 
 ## Changelog
 
+- **2026-05-18 09:55** — Bug fix: window matching now uses word-boundary regex instead of substring match. Previously, project `tail` would falsely match a jugcoach window with `detail` in the title. Also: JSON notes from the same file are now batched into a single Roo Code task instead of being sent individually with a 60s delay between each.
 - **2026-05-13 05:55** — Added `add_project.py` script: CLI tool to add a new watch source to config.py and automatically restart the watcher. Supports markdown and JSON formats, duplicate detection, and `--no-restart` flag.
 - **2026-05-13 05:41** — Fix: serialized submissions across all watch threads. When multiple projects have pending items at startup (e.g. after reboot), they now submit one at a time with a 60-second gap between each, preventing window-focus conflicts that caused all but one to fail. Controlled by `INTER_SUBMIT_DELAY` in config.py.
 - **2026-04-25 09:25** — Fix: JSON `_completed`/`_undone` files now use the same `{"notes": [...]}` format as the original JSON, so notes can be copy-pasted back to retry. Each note gets a `_processed` timestamp. Previously these were plain text, making it impossible to easily re-queue items.
